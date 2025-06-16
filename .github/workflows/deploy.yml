@@ -47,10 +47,11 @@ jobs:
       - name: Deploy CloudFormation stack
         run: |
           aws cloudformation deploy \
-            --template-file fargate.yml \
-            --stack-name ${{ env.STACK_NAME }} \
-            --capabilities CAPABILITY_IAM \
-            --parameter-overrides ContainerImageUri=${{ env.IMAGE_URI }}
+          --template-file fargate.yml \
+          --stack-name fargate-nginx-stack \
+          --capabilities CAPABILITY_NAMED_IAM \
+          --parameter-overrides ContainerImageUri=${{ env.IMAGE_URI }}
+
 
       - name: Get Load Balancer URL
         run: |

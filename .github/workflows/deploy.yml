@@ -1,0 +1,58 @@
+name: Deploy to ECS Fargate
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+env:
+  AWS_REGION: us-east-1
+  ECR_REPOSITORY: fargate-nginx-app
+  STACK_NAME: fargate-nginx-stack
+
+jobs:
+  deploy:
+    name: Build, Push, and Deploy to ECS Fargate
+    runs-on: ubuntu-latest
+
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+       - name: Configure AWS Credentials
+         uses: aws-actions/configure-aws-credentials@v3
+         with:
+           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+           aws-region: us-east-1
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push Docker image to ECR
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          IMAGE_URI="${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_REPOSITORY }}:$IMAGE_TAG"
+          docker build -t $IMAGE_URI .
+          docker push $IMAGE_URI
+          echo "IMAGE_URI=$IMAGE_URI" >> $GITHUB_ENV
+
+      - name: Deploy CloudFormation stack
+        run: |
+          aws cloudformation deploy \
+            --template-file fargate.yml \
+            --stack-name ${{ env.STACK_NAME }} \
+            --capabilities CAPABILITY_IAM \
+            --parameter-overrides ContainerImageUri=${{ env.IMAGE_URI }}
+
+      - name: Get Load Balancer URL
+        run: |
+          echo "Waiting for stack to complete..."
+          aws cloudformation wait stack-create-complete --stack-name ${{ env.STACK_NAME }} || true
+          aws cloudformation describe-stacks --stack-name ${{ env.STACK_NAME }} \
+            --query "Stacks[0].Outputs[?OutputKey=='LoadBalancerDNS'].OutputValue" --output text
